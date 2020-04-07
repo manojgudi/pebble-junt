@@ -1,7 +1,6 @@
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plotObject
 import numpy as np
 
-import matplotlib
 import traceback
 
 class AccelReading:
@@ -9,7 +8,14 @@ class AccelReading:
         self.x = x
         self.y = y
         self.z = z
-        self.epochTimeMs = epochTimeMs
+        self.epochTimeMs    = epochTimeMs
+        self.isEmptyReading = False
+
+        # Empty Reading is used later for analysis
+        if x == y == z == 0:
+            self.isEmptyReading = True
+            
+
 
 def findSubString(textLine, subString):
     if textLine.find(subString) == -1:
@@ -57,11 +63,10 @@ def loadFromFile(pebbleLogFile):
     
     return accelReadings
 
-
-def main():
-    pebbleLogFile = "./trainingData/thirtyJumpsLegCalibrated3.txt"
-    accelReadings = loadFromFile(pebbleLogFile)
-    
+def plotRawAccReadings(accelReadings, plt):
+    """
+    Return plt object 
+    """
     timeSeries = np.array( [accelReading.epochTimeMs for accelReading in accelReadings] )
     xs = np.array( [accelReading.x for accelReading in accelReadings] )
     ys = np.array( [accelReading.y for accelReading in accelReadings] )
@@ -72,7 +77,15 @@ def main():
     plt.plot(timeSeries, zs, label="Acc Z")
 
     plt.legend(loc="upper left")    
-    plt.show()
+    return plt
+
+def main():
+    pebbleLogFile = "./trainingData/thirtyJumpsLegCalibrated1.txt"
+    pebbleLogFile = "./trainingData/twentyJumpsLegCalibrated1.txt"
+    accelReadings = loadFromFile(pebbleLogFile)
+    
+    plotObject_ = plotRawAccReadings(accelReadings, plotObject)
+    plotObject_.show()
 
 
 if __name__ == "__main__":

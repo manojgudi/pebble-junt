@@ -39,7 +39,7 @@ def funcParseLine(textLine):
 
     return accelReading
 
-def loadFromFile(filePath):
+def loadFromFile(pebbleLogFile):
     """
     Takes a filePath, reads it and returns the list of accelReadings 
     objects

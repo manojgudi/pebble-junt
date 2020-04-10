@@ -15,25 +15,28 @@ def peakDetected(accelReadingWindow, peakPointInflectionRatioThreshold, peakPoin
     """
     inflectionDetected = False
     deflectionDetected = False
-    firstAccelReading  = accelReadingWindow[0].x
+
+    firstAccelReading  = accelReadingWindow[0]
+    firstAccelReadingX = firstAccelReading.x
 
     # Zero Check, If zero, the window isnt formed, move the sliding
     # window further 
-    if firstAccelReading == 0:
+    if accelReadingWindow[0].isEmptyReading or firstAccelReadingX == 0:
         return False
+
 
     for i in accelReadingWindow:
         # Analyze the X component only    
         i = i.x if i.x != 0 else 1
 
-        ratio = abs(i / firstAccelReading)
+        ratio = abs(i / firstAccelReadingX)
         if ratio >= peakPointInflectionRatioThreshold:
             inflectionDetected = True
 
         if inflectionDetected and (ratio <= peakPointDeflectionRatioThreshold):
             deflectionDetected = True
 
-        firstAccelReading = i
+        firstAccelReadingX = i
 
     return inflectionDetected and deflectionDetected
 
@@ -92,8 +95,8 @@ def plotWindowsWithPeak(windowsWithPeak, plt):
     return plt
 
 def main():
-    #pebbleLogFile = "./trainingData/thirtyJumpsLegCalibrated3.txt"
-    pebbleLogFile = "./trainingData/twentyJumpsLegCalibrated3.txt"
+    #pebbleLogFile = "./trainingData/thirtyJumpsLegCalibrated2.txt"
+    pebbleLogFile = "./trainingData/twentyJumpsLegCalibrated2.txt"
     accelReadings = loadFromFile(pebbleLogFile)
     windowSize    = 5
     print("Simulating for ", pebbleLogFile)
@@ -107,13 +110,13 @@ def main():
     #plotObject_.show()
 
 
-    
+    minThresholdDetected = 18    
     for k in range(3, 12):
         for i in np.arange(1.5, 4.5, 0.1):
             for j in np.arange(0.3, 1.5, 0.1):
                 windowsWithPeak = simulateRunning(accelReadings, k, i, j)
                 jumps = len(windowsWithPeak)
-                if jumps >= 25:
+                if jumps >= minThresholdDetected:
                     print("I ", i, "J ", j, "K", k, "Jumps ", jumps) 
     
         print("---------")

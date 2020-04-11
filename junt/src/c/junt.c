@@ -1,9 +1,33 @@
 #include <pebble.h>
 #include "junt.h"
 
+#define WINDOW_SIZE 5
+
 static Window *s_window;
 static TextLayer *s_text_layer;
-static Readings *readings;
+
+// Hardcoded Variables for the algorithm
+static const float PEAK_POINT_INFLECTION_RATIO_THRESHOLD = 1.5;
+static const float PEAK_POINT_DEFLECTION_RATIO_THRESHOLD = 0.9;
+static  AccelReading *(accelReadingsWindow[WINDOW_SIZE]);
+//static AccelReading *(accelReadingsWindow[]); // TODO Initialize this 
+static int jumpCount = 0;
+
+
+static void initAccelReadingsWindow(){
+     // Initialize accelReadingsWindow
+     for(int i=0; i<WINDOW_SIZE; i++){
+        // Check if any content exists, free it up if yes, and then realloc
+        if (!accelReadingsWindow[i]){
+            free(accelReadingsWindow[i]);
+            }
+
+        AccelReading *accelReading_ = newAccelReading(0, 0, 0, 0);
+        accelReadingsWindow[i] = accelReading_;
+     }
+ }
+
+
 
 static void prv_select_click_handler(ClickRecognizerRef recognizer, void *context) {
   text_layer_set_text(s_text_layer, "Select");
@@ -46,11 +70,66 @@ static void prv_init(void) {
   });
   const bool animated = true;
   window_stack_push(s_window, animated);
+
+  // Initialize AccelReadingWindow
+  // Initialize the Window
+  //AccelReading *(accelReadingsWindow[WINDOW_SIZE]);
+  initAccelReadingsWindow();
+
 }
 
 static void prv_deinit(void) {
   window_destroy(s_window);
+
+  // TODO 
+  // Release all objects with malloc
+  for (int i=0; i<WINDOW_SIZE; i++){
+     //free(accelReadingsWindow[i]); 
+  }
+  //free(accelReadingsWindow);
 }
+
+
+// peak_detected
+//
+bool peakDetected(){
+    bool inflectionDetected = false;
+    bool deflectionDetected = false;
+
+    // Check if the first element contains
+    AccelReading* firstAccelReading = accelReadingsWindow[0];
+    int16_t firstAccelReadingX      = firstAccelReading->x;
+
+    if ((firstAccelReading->isEmptyReading) || (firstAccelReadingX == 0))
+        return false;
+
+    // Iterate over the accelReadingsWindow to check if there was a peak or not in the given window
+    // NOTE accelReadingsWindow is already initiatlized here
+    for(int i=0; i<WINDOW_SIZE; i++){
+        int16_t x   = (accelReadingsWindow[i]->x != 0) ? accelReadingsWindow[i]->x : 1;
+        float ratio = (float) (x / firstAccelReadingX);  // Float Division
+        APP_LOG(APP_LOG_LEVEL_INFO, "Ratio %d", (int) (ratio * 100.0)  ) ;
+
+        if (ratio >= PEAK_POINT_INFLECTION_RATIO_THRESHOLD)
+            inflectionDetected = true;
+
+        if (inflectionDetected && ( ratio <= PEAK_POINT_DEFLECTION_RATIO_THRESHOLD))
+            deflectionDetected = true;
+        
+        firstAccelReadingX = x;
+        }
+
+    return (inflectionDetected && deflectionDetected);
+    }
+
+// Window to append new AccelReading into the window
+void pushInWindow(AccelReading* accelReading){
+    accelReadingsWindow[WINDOW_SIZE - 1] = accelReading; 
+    for (int i=0; i < (WINDOW_SIZE-1); i++){
+        accelReadingsWindow[i] = accelReadingsWindow[i+1];
+    }
+  }
+
 
 static void accel_data_handler(AccelData *data, uint32_t num_samples) {
   // Read sample 0's x, y, and z values
@@ -66,8 +145,18 @@ static void accel_data_handler(AccelData *data, uint32_t num_samples) {
 
   if(!did_vibrate) {
     // Print it out
-    APP_LOG(APP_LOG_LEVEL_INFO, "t: %llu, x: %d, y: %d, z: %d",
-                                                          timestamp, x, y, z);
+    //APP_LOG(APP_LOG_LEVEL_INFO, "t: %llu, x: %d, y: %d, z: %d", timestamp, x, y, z);
+
+    // Create a new Accel Reading
+    AccelReading* accelReading = newAccelReading(timestamp, x, y, z);
+    // Populate accelReadingsWindow
+    pushInWindow(accelReading);
+    if (peakDetected()){
+        jumpCount += 1;
+        initAccelReadingsWindow();
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "Jump Count: %d", jumpCount);
+       }
+
   } else {
     // Discard with a warning
     APP_LOG(APP_LOG_LEVEL_WARNING, "Vibration occured during collection");

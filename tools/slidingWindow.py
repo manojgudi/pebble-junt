@@ -96,7 +96,7 @@ def plotWindowsWithPeak(windowsWithPeak, plt):
 
 def main():
     #pebbleLogFile = "./trainingData/thirtyJumpsLegCalibrated2.txt"
-    pebbleLogFile = "./trainingData/twentyJumpsLegCalibrated2.txt"
+    pebbleLogFile = "./trainingData/twentyJumpsLegCalibrated3.txt"
     accelReadings = loadFromFile(pebbleLogFile)
     windowSize    = 5
     print("Simulating for ", pebbleLogFile)

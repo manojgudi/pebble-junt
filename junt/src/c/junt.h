@@ -27,5 +27,17 @@ AccelReading* newAccelReading(uint64_t epochTimeMS,
     return accelReading;
 } 
 
+typedef struct JumpStatistics {
+    uint64_t previousEpochTimeMS;
+    int averageJumpsPerMin;
+    int jumpCount;
+    } JumpStatistics;
 
+JumpStatistics* newJumpStatistics(){
+    JumpStatistics* jumpStatistics = malloc(sizeof(JumpStatistics));
+    jumpStatistics->previousEpochTimeMS = 0;
+    jumpStatistics->averageJumpsPerMin = 0;
+    jumpStatistics->jumpCount = 0;
+    return jumpStatistics;
+    }
 // Object* p1 = Object_new(id++, myValue);

@@ -1,98 +1,44 @@
 #include <pebble.h>
 #include "junt.h"
 
-#define WINDOW_SIZE 5
+#define WINDOW_SIZE 4
+#define MAX_TEXT_SIZE 40
 
 static Window *s_window;
 static TextLayer *s_text_layer;
 
 // Hardcoded Variables for the algorithm
-static const float PEAK_POINT_INFLECTION_RATIO_THRESHOLD = 1.5;
-static const float PEAK_POINT_DEFLECTION_RATIO_THRESHOLD = 0.9;
-static  AccelReading *(accelReadingsWindow[WINDOW_SIZE]);
+static const float PEAK_POINT_INFLECTION_RATIO_THRESHOLD = 1.6*1.6;
+static const float PEAK_POINT_DEFLECTION_RATIO_THRESHOLD = 0.8*0.8;
+static AccelReading *(accelReadingsWindow[WINDOW_SIZE]);
+static JumpStatistics *jumpStatistics;
 //static AccelReading *(accelReadingsWindow[]); // TODO Initialize this 
 static int jumpCount = 0;
+static char *staticText;
+static bool isAccelDataSubscribed = false;
 
 
-static void initAccelReadingsWindow(){
-     // Initialize accelReadingsWindow
-     for(int i=0; i<WINDOW_SIZE; i++){
-        // Check if any content exists, free it up if yes, and then realloc
-        if (!accelReadingsWindow[i]){
-            free(accelReadingsWindow[i]);
-            }
-
-        AccelReading *accelReading_ = newAccelReading(0, 0, 0, 0);
-        accelReadingsWindow[i] = accelReading_;
-     }
- }
-
-
-
-static void prv_select_click_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(s_text_layer, "Select");
-}
-
-static void prv_up_click_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(s_text_layer, "Up");
-}
-
-static void prv_down_click_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(s_text_layer, "Down");
-}
-
-static void prv_click_config_provider(void *context) {
-  window_single_click_subscribe(BUTTON_ID_SELECT, prv_select_click_handler);
-  window_single_click_subscribe(BUTTON_ID_UP, prv_up_click_handler);
-  window_single_click_subscribe(BUTTON_ID_DOWN, prv_down_click_handler);
-}
-
-static void prv_window_load(Window *window) {
-  Layer *window_layer = window_get_root_layer(window);
-  GRect bounds = layer_get_bounds(window_layer);
-
-  s_text_layer = text_layer_create(GRect(0, 72, bounds.size.w, 20));
-  text_layer_set_text(s_text_layer, "Press a button");
-  text_layer_set_text_alignment(s_text_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, text_layer_get_layer(s_text_layer));
-}
-
-static void prv_window_unload(Window *window) {
-  text_layer_destroy(s_text_layer);
-}
-
-static void prv_init(void) {
-  s_window = window_create();
-  window_set_click_config_provider(s_window, prv_click_config_provider);
-  window_set_window_handlers(s_window, (WindowHandlers) {
-    .load = prv_window_load,
-    .unload = prv_window_unload,
-  });
-  const bool animated = true;
-  window_stack_push(s_window, animated);
-
-  // Initialize AccelReadingWindow
-  // Initialize the Window
-  //AccelReading *(accelReadingsWindow[WINDOW_SIZE]);
-  initAccelReadingsWindow();
-
-}
-
-static void prv_deinit(void) {
-  window_destroy(s_window);
-
-  // TODO 
-  // Release all objects with malloc
-  for (int i=0; i<WINDOW_SIZE; i++){
-     //free(accelReadingsWindow[i]); 
+// Window to append new AccelReading into the window
+void pushInWindow(AccelReading* accelReading){
+    accelReadingsWindow[WINDOW_SIZE - 1] = accelReading; 
+    for (int i=0; i < (WINDOW_SIZE-1); i++){
+        accelReadingsWindow[i] = accelReadingsWindow[i+1];
+    }
   }
-  //free(accelReadingsWindow);
-}
 
+// Update the data structure
+void showStatsOnWindow(){
+    //APP_LOG(APP_LOG_LEVEL_INFO, "showStats1 %d %d ", heap_bytes_used(), heap_bytes_free());
+    snprintf(staticText, MAX_TEXT_SIZE, "Jump Count: %d\n Rate: %d", jumpStatistics->jumpCount, jumpStatistics->averageJumpsPerMin);
+    //sprintf(buffer, "Jump Count: %d", jumpCount);
+    text_layer_set_text(s_text_layer, staticText);
+    APP_LOG(APP_LOG_LEVEL_INFO, staticText) ;
+    //APP_LOG(APP_LOG_LEVEL_INFO, "showStats2 %d %d ", heap_bytes_used(), heap_bytes_free());
+    }
 
-// peak_detected
-//
+// Peak_Detected hence Jump Detected
 bool peakDetected(){
+    //APP_LOG(APP_LOG_LEVEL_INFO, "PeakD1 %d %d ", heap_bytes_used(), heap_bytes_free());
     bool inflectionDetected = false;
     bool deflectionDetected = false;
 
@@ -107,8 +53,8 @@ bool peakDetected(){
     // NOTE accelReadingsWindow is already initiatlized here
     for(int i=0; i<WINDOW_SIZE; i++){
         int16_t x   = (accelReadingsWindow[i]->x != 0) ? accelReadingsWindow[i]->x : 1;
-        float ratio = (float) (x / firstAccelReadingX);  // Float Division
-        APP_LOG(APP_LOG_LEVEL_INFO, "Ratio %d", (int) (ratio * 100.0)  ) ;
+        float ratio = (float) (x*1.0 / firstAccelReadingX) * (x*1.0 / firstAccelReadingX);  // Float Division
+        //APP_LOG(APP_LOG_LEVEL_INFO, "Ratio %d, %d, %d", firstAccelReadingX, x, (int) (ratio * 1000) ) ;
 
         if (ratio >= PEAK_POINT_INFLECTION_RATIO_THRESHOLD)
             inflectionDetected = true;
@@ -117,20 +63,31 @@ bool peakDetected(){
             deflectionDetected = true;
         
         firstAccelReadingX = x;
-        }
-
+      }
+    
+    APP_LOG(APP_LOG_LEVEL_INFO, "PeakD2 %d %d ", heap_bytes_used(), heap_bytes_free());
+    //APP_LOG(APP_LOG_LEVEL_INFO, "Memory Free %d", heap_bytes_free());
     return (inflectionDetected && deflectionDetected);
     }
 
-// Window to append new AccelReading into the window
-void pushInWindow(AccelReading* accelReading){
-    accelReadingsWindow[WINDOW_SIZE - 1] = accelReading; 
-    for (int i=0; i < (WINDOW_SIZE-1); i++){
-        accelReadingsWindow[i] = accelReadingsWindow[i+1];
-    }
-  }
 
+static void initAccelReadingsWindow(){
+    //APP_LOG(APP_LOG_LEVEL_INFO, "initAcc1 %d %d ", heap_bytes_used(), heap_bytes_free());
+     // Initialize accelReadingsWindow
+     for(int i=0; i<WINDOW_SIZE; i++){
+        // Check if any content exists, free it up if yes, and then realloc
+        //if (accelReadingsWindow[i]){
+            free(accelReadingsWindow[i]);
+         //}
 
+        accelReadingsWindow[i] = newAccelReading(0,0,0,0);
+        //AccelReading *accelReading_ = newAccelReading(0, 0, 0, 0);
+        //accelReadingsWindow[i] = accelReading_;
+     }
+    //APP_LOG(APP_LOG_LEVEL_INFO, "initAcc2 %d %d ", heap_bytes_used(), heap_bytes_free());
+ }
+
+// Acceleration Handler
 static void accel_data_handler(AccelData *data, uint32_t num_samples) {
   // Read sample 0's x, y, and z values
   int16_t x = data[0].x;
@@ -154,14 +111,128 @@ static void accel_data_handler(AccelData *data, uint32_t num_samples) {
     if (peakDetected()){
         jumpCount += 1;
         initAccelReadingsWindow();
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "Jump Count: %d", jumpCount);
+        //APP_LOG(APP_LOG_LEVEL_DEBUG, "Jump Count: %d", jumpCount);
+        //text_layer_set_text(s_text_layer, ("JC %d", jumpCount));
+     
+      // Update the jumpStatistics
+      if (jumpStatistics->jumpCount != 0){
+          int estimatedJumpsPerMin = (int) (60000.0/ (timestamp - jumpStatistics->previousEpochTimeMS));
+          int averageJumpsPerMin = (int) ((jumpStatistics->averageJumpsPerMin * jumpStatistics->jumpCount) + estimatedJumpsPerMin) / (jumpStatistics->jumpCount + 1);
+          jumpStatistics->averageJumpsPerMin = averageJumpsPerMin;
+
        }
 
-  } else {
+      // Update the statistics
+      jumpStatistics->jumpCount = jumpCount;
+      jumpStatistics->previousEpochTimeMS = timestamp;
+
+      // Finally Show Stats on the Window
+      showStatsOnWindow();
+    }
+
+    //free(accelReading);
+  }   else {
     // Discard with a warning
     APP_LOG(APP_LOG_LEVEL_WARNING, "Vibration occured during collection");
   }
 }
+
+/*
+Reset the application state
+*/
+static void prv_select_click_handler(ClickRecognizerRef recognizer, void *context) {
+  // Tell User its active
+  vibes_short_pulse();
+  jumpCount = 0;
+
+  // Subscribe if not subscribed
+  if (!isAccelDataSubscribed){
+    uint32_t num_samples = 3;  // Number of samples per batch/callback
+    accel_data_service_subscribe(num_samples, accel_data_handler);
+    isAccelDataSubscribed = true;
+    text_layer_set_text(s_text_layer, "Session Started");
+  } else {
+    // Unsubscribe the service  
+    text_layer_set_text(s_text_layer, "Session Paused\nPress Start to resume.");
+    accel_data_service_unsubscribe();
+    isAccelDataSubscribed = false;
+  }
+  
+}
+
+static void prv_up_click_handler(ClickRecognizerRef recognizer, void *context) {
+  //text_layer_set_text(s_text_layer, "Up");
+  showStatsOnWindow();
+}
+
+static void prv_down_click_handler(ClickRecognizerRef recognizer, void *context) {
+  //text_layer_set_text(s_text_layer, "Down");
+  showStatsOnWindow();
+}
+
+static void prv_click_config_provider(void *context) {
+  window_single_click_subscribe(BUTTON_ID_SELECT, prv_select_click_handler);
+  window_single_click_subscribe(BUTTON_ID_UP, prv_up_click_handler);
+  window_single_click_subscribe(BUTTON_ID_DOWN, prv_down_click_handler);
+}
+
+static void prv_window_load(Window *window) {
+  Layer *window_layer = window_get_root_layer(window);
+  GRect bounds = layer_get_bounds(window_layer);
+
+  s_text_layer = text_layer_create(GRect(0, 72, bounds.size.w, 40));
+  text_layer_set_text(s_text_layer, "Press Select to Start");
+  text_layer_set_text_alignment(s_text_layer, GTextAlignmentCenter);
+  layer_add_child(window_layer, text_layer_get_layer(s_text_layer));
+}
+
+
+static void prv_window_unload(Window *window) {
+  text_layer_destroy(s_text_layer);
+}
+
+static void prv_init(void) {
+  s_window = window_create();
+  window_set_click_config_provider(s_window, prv_click_config_provider);
+  window_set_window_handlers(s_window, (WindowHandlers) {
+    .load = prv_window_load,
+    .unload = prv_window_unload,
+  });
+  const bool animated = true;
+  window_stack_push(s_window, animated);
+
+  // Enable Text Wrapping
+  text_layer_set_overflow_mode(s_text_layer, GTextOverflowModeWordWrap);
+
+  // Initialize the Static Text to show Jump Count
+  staticText = malloc(sizeof(char) * (MAX_TEXT_SIZE + 1));
+
+  // Initialize jumpStatistics;
+  jumpStatistics = newJumpStatistics();
+
+  // Initialize the Window
+  initAccelReadingsWindow();
+
+}
+
+static void prv_deinit(void) {
+  window_destroy(s_window);
+  // Unsubscribe
+  accel_data_service_unsubscribe();  
+
+  // XXX Why does the app crash when we free this?
+  // Release all objects with malloc
+  for (int i=0; i<WINDOW_SIZE; i++){
+     //free(accelReadingsWindow[i]); 
+  }
+  
+  // Free staticText
+  free(staticText);
+  //free(accelReadingsWindow);
+  free(jumpStatistics);
+}
+
+
 
 int main(void) {
 
@@ -169,11 +240,9 @@ int main(void) {
 
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", s_window);
 
-  uint32_t num_samples = 3;  // Number of samples per batch/callback
   // Subscribe to batched data events
 
   //*reading;
-  accel_data_service_subscribe(num_samples, accel_data_handler);
 
   app_event_loop();
   prv_deinit();
